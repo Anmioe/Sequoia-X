@@ -1,7 +1,9 @@
 """飞书通知模块：将选股结果通过 Webhook 推送至飞书群。"""
 
 import json
+import sqlite3
 from datetime import date
+from pathlib import Path
 
 import requests
 
@@ -9,6 +11,9 @@ from sequoia_x.core.config import Settings
 from sequoia_x.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 股票名称本地缓存路径:sequoia_x/notify/feishu.py -> 根目录/data/sequoia_v2.db
+_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "sequoia_v2.db"
 
 
 class FeishuNotifier:
@@ -39,17 +44,27 @@ class FeishuNotifier:
 
     @staticmethod
     def _get_stock_names(symbols: list[str]) -> dict[str, str]:
-        """通过 baostock 批量查询股票名称，返回 {code: name} 映射。"""
-        import baostock as bs
-        bs.login()
-        mapping = {}
-        for code in symbols:
-            prefix = "sh" if code.startswith(("6", "9")) else "sz"
-            rs = bs.query_stock_basic(code=f"{prefix}.{code}")
-            while rs.next():
-                row = rs.get_row_data()
-                mapping[code] = row[1]  # 第2个字段是股票名称
-        bs.logout()
+        """从本地 stock_basic 表批量查股票名称。
+
+        之前用 baostock 逐只 query_stock_basic,baostock 被风控后 socket 抛 WinError 10057,
+        导致 _build_card 失败、推送连环崩。改为本地 sqlite 一次性查,失败时优雅降级到代码。
+        """
+        if not symbols:
+            return {}
+        mapping: dict[str, str] = {}
+        try:
+            conn = sqlite3.connect(_DB_PATH)
+            placeholders = ",".join("?" * len(symbols))
+            rows = conn.execute(
+                f"SELECT code, name FROM stock_basic WHERE code IN ({placeholders})",
+                symbols,
+            ).fetchall()
+            mapping = {code: name for code, name in rows}
+            conn.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"本地查股票名称失败({type(exc).__name__}: {exc});将使用代码占位"
+            )
         return mapping
 
     def _build_card(self, symbols: list[str], strategy_name: str) -> dict:
