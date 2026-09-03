@@ -69,6 +69,15 @@ STRATEGY_WEIGHTS: dict[str, int] = {
 # 综合选股每日上限（用户要求：每天 ≤ 20 只）
 TOP_N: int = 20
 
+# 用户不可交易的板块前缀（科创板 / 创业板 / 北交所），分推与综合模式均过滤
+#   科创板: 688 / 689   创业板: 300 / 301   北交所: 4 / 8 开头（含 920 新号段）
+EXCLUDED_BOARDS: tuple[str, ...] = ("688", "689", "300", "301", "4", "8", "920")
+
+
+def _is_buyable(code: str) -> bool:
+    """用户可交易板块（沪/深主板）才保留；其余一律过滤。"""
+    return not code.startswith(EXCLUDED_BOARDS)
+
 
 def _run_composite(
     keys: list[str],
@@ -102,6 +111,8 @@ def _run_composite(
     for key, syms in results.items():
         w = STRATEGY_WEIGHTS.get(key, 1)
         for s in syms:
+            if not _is_buyable(s):
+                continue
             score_map[s] = score_map.get(s, 0) + w
             vote_map[s] = vote_map.get(s, 0) + 1
             contrib.setdefault(s, []).append(key)
@@ -171,6 +182,9 @@ def main() -> None:
             print(f"{name} 执行失败：{type(exc).__name__} {exc}", flush=True)
             logger.exception(f"{name} 执行失败")
             continue
+
+        # 过滤掉用户不可交易的板块（科创板/创业板/北交所）
+        selected = [s for s in selected if _is_buyable(s)]
 
         print(f"{name}: {len(selected)} 只 -> {selected}", flush=True)
 
