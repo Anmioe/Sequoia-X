@@ -15,7 +15,7 @@
 --no-push    只打印选股结果，不推飞书（本地调试/查看用）
 --only       只跑指定策略，逗号分隔，如 --only turtle,ma_volume
              可选标识：ma_volume / turtle / flag / shakeout / limit_down / rps / private
---composite  跨策略综合打分，取 Top-N（默认 30）推送一张卡片；
+--composite  跨策略综合打分，取 Top-N（默认 20）推送一张卡片；
              与「每策略各推一条」的默认模式互斥，用于每日精简播报。
 """
 
@@ -66,8 +66,8 @@ STRATEGY_WEIGHTS: dict[str, int] = {
     "limit_down": 1,
 }
 
-# 综合选股每日上限（用户要求：每天 ≤ 30 只）
-TOP_N: int = 30
+# 综合选股每日上限（用户要求：每天 ≤ 20 只）
+TOP_N: int = 20
 
 
 def _run_composite(
