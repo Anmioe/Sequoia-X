@@ -153,3 +153,93 @@ class FeishuNotifier:
 
         except requests.RequestException as exc:
             logger.error(f"飞书推送请求异常 [{webhook_key}]：{exc}")
+
+    def _build_composite_card(
+        self,
+        symbols: list[str],
+        score_map: dict[str, float],
+        vote_map: dict[str, int],
+        contrib: dict[str, list[str]],
+    ) -> dict:
+        today = date.today().strftime("%Y-%m-%d")
+        names = self._get_stock_names(symbols)
+
+        lines: list[str] = []
+        for code in symbols:
+            xq_code = self._to_xueqiu_code(code)
+            name = names.get(code, xq_code)
+            lines.append(
+                f"[{name}](https://xueqiu.com/S/{xq_code}) "
+                f"｜ 分{score_map[code]} ｜ {','.join(contrib[code])}"
+            )
+        body = "\n".join(lines) if lines else "（无选股结果）"
+
+        return {
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": f"📈 Sequoia-X 综合选股 | Top{len(symbols)}",
+                    },
+                    "template": "blue",
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": (
+                                f"**日期：** {today}\n"
+                                f"**模式：** 跨策略综合打分（权重合并）\n"
+                                f"**选股数量：** {len(symbols)}"
+                            ),
+                        },
+                    },
+                    {"tag": "hr"},
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**选股列表（分=综合得分，命中策略见右）：**\n{body}",
+                        },
+                    },
+                ],
+            },
+        }
+
+    def send_composite(
+        self,
+        symbols: list[str],
+        score_map: dict[str, float],
+        vote_map: dict[str, int],
+        contrib: dict[str, list[str]],
+        webhook_key: str = "default",
+    ) -> None:
+        """推送一张「综合选股」卡片（跨策略打分 Top-N），路由到主机器人。
+
+        与按策略分推的 send() 不同，这里把每日候选压缩成一张清单，
+        每只附综合得分与命中策略，便于快速浏览。
+        """
+        url = self.settings.get_webhook_url(webhook_key)
+        payload = self._build_composite_card(symbols, score_map, vote_map, contrib)
+
+        try:
+            resp = requests.post(
+                url,
+                data=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            resp_json = resp.json()
+            if resp.status_code != 200 or resp_json.get("code") != 0:
+                logger.error(
+                    f"飞书综合推送失败 [{webhook_key}] "
+                    f"HTTP状态={resp.status_code} 飞书响应={resp.text}"
+                )
+            else:
+                logger.info(
+                    f"飞书综合推送成功 [{webhook_key}]，共 {len(symbols)} 只股票"
+                )
+        except requests.RequestException as exc:
+            logger.error(f"飞书综合推送请求异常 [{webhook_key}]：{exc}")

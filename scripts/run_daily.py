@@ -15,6 +15,8 @@
 --no-push    只打印选股结果，不推飞书（本地调试/查看用）
 --only       只跑指定策略，逗号分隔，如 --only turtle,ma_volume
              可选标识：ma_volume / turtle / flag / shakeout / limit_down / rps / private
+--composite  跨策略综合打分，取 Top-N（默认 30）推送一张卡片；
+             与「每策略各推一条」的默认模式互斥，用于每日精简播报。
 """
 
 from __future__ import annotations
@@ -53,11 +55,92 @@ STRATEGY_MAP: dict[str, type[BaseStrategy]] = {
     "private": PrivatePlacementStrategy,
 }
 
+# 综合打分权重：数值越大代表该策略信号的优先级/可靠性越高
+STRATEGY_WEIGHTS: dict[str, int] = {
+    "turtle": 3,
+    "rps": 3,
+    "ma_volume": 2,
+    "flag": 2,
+    "shakeout": 2,
+    "private": 2,
+    "limit_down": 1,
+}
+
+# 综合选股每日上限（用户要求：每天 ≤ 30 只）
+TOP_N: int = 30
+
+
+def _run_composite(
+    keys: list[str],
+    engine: DataEngine,
+    settings,
+    logger,
+    notifier: FeishuNotifier | None,
+) -> None:
+    """跨策略综合打分：每策略给选中股票加权，取总分 Top-N 推送一张卡片。
+
+    与默认「每策略各推一条」互斥，用于把每日播报压缩到 ≤ TOP_N 只。
+    """
+    results: dict[str, list[str]] = {}
+    for key in keys:
+        cls = STRATEGY_MAP[key]
+        strategy = cls(engine=engine, settings=settings)
+        name = type(strategy).__name__
+        try:
+            selected = strategy.run()
+        except Exception as exc:  # noqa: BLE001
+            print(f"{name} 执行失败：{type(exc).__name__} {exc}", flush=True)
+            logger.exception(f"{name} 执行失败")
+            results[key] = []
+            continue
+        results[key] = selected
+        print(f"{name}: {len(selected)} 只", flush=True)
+
+    score_map: dict[str, float] = {}
+    vote_map: dict[str, int] = {}
+    contrib: dict[str, list[str]] = {}
+    for key, syms in results.items():
+        w = STRATEGY_WEIGHTS.get(key, 1)
+        for s in syms:
+            score_map[s] = score_map.get(s, 0) + w
+            vote_map[s] = vote_map.get(s, 0) + 1
+            contrib.setdefault(s, []).append(key)
+
+    # 先按总分，再按命中策略数，最后按代码保证确定性
+    ranked = sorted(
+        score_map.keys(),
+        key=lambda s: (score_map[s], vote_map[s], s),
+        reverse=True,
+    )
+    top = ranked[:TOP_N]
+
+    print(
+        f"\n=== 综合打分 Top {len(top)}（共 {len(score_map)} 只候选）===",
+        flush=True,
+    )
+    for s in top:
+        print(
+            f"  {s}  分={score_map[s]} 票数={vote_map[s]} 策略={contrib[s]}",
+            flush=True,
+        )
+
+    if top and notifier:
+        notifier.send_composite(top, score_map, vote_map, contrib)
+    elif top:
+        print("  （--no-push，未推送）", flush=True)
+    else:
+        print("  综合选股为空", flush=True)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sequoia-X 日常选股（跳过 baostock 同步）")
     parser.add_argument("--no-push", action="store_true", help="只打印结果，不推飞书")
     parser.add_argument("--only", default="", help="只跑指定策略，逗号分隔标识")
+    parser.add_argument(
+        "--composite",
+        action="store_true",
+        help="跨策略综合打分，取 Top-N 推送一张卡片（每日精简播报）",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -71,6 +154,10 @@ def main() -> None:
         return
 
     notifier = None if args.no_push else FeishuNotifier(settings)
+
+    if args.composite:
+        _run_composite(keys, engine, settings, logger, notifier)
+        return
 
     print(f"库内股票 {len(engine.get_local_symbols())} 只", flush=True)
 

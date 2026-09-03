@@ -6,7 +6,7 @@ REM        此脚本供你在本机（非沙箱）一键注册。普通双击即
 REM        用户注册，仅在登录后运行；如需后台运行请「右键→以管理员
 REM        身份运行」，会自动加 /rl highest。
 REM ============================================================
-set "BAT=C:\Users\Administrator\WorkBuddy\2026-09-02-21-10-59\Sequoia-X\scripts\daily.bat"
+set "BAT=C:\Users\Administrator\WorkBuddy\2026-09-02-21-10-59\Sequoia-X-new\scripts\daily.bat"
 
 schtasks /create /tn "SequoiaX-Daily" /tr "%BAT%" /sc daily /st 15:30 /f
 if %errorlevel%==0 (
