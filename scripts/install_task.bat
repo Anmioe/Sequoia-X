@@ -8,9 +8,9 @@ REM        身份运行」，会自动加 /rl highest。
 REM ============================================================
 set "BAT=C:\Users\Administrator\WorkBuddy\2026-09-02-21-10-59\Sequoia-X-new\scripts\daily.bat"
 
-schtasks /create /tn "SequoiaX-Daily" /tr "%BAT%" /sc daily /st 15:30 /f
+schtasks /create /tn "SequoiaX-Daily" /tr "%BAT%" /sc daily /st 15:40 /f
 if %errorlevel%==0 (
-    echo [OK] 已注册计划任务：SequoiaX-Daily（每日 15:30 收盘后运行）
+    echo [OK] 已注册计划任务：SequoiaX-Daily（每日 15:40 收盘后运行）
 ) else (
     echo [FAIL] 注册失败，请确认以管理员身份运行，或修改上面的路径后重试
 )
