@@ -9,6 +9,8 @@ REM ============================================================
 set "BAT=C:\Users\Administrator\WorkBuddy\2026-09-02-21-10-59\Sequoia-X-new\scripts\daily.bat"
 
 schtasks /create /tn "SequoiaX-Daily" /tr "%BAT%" /sc daily /st 15:40 /f
+REM schtasks /create sometimes returns nonzero on /f overwrite; verify with /query instead of checking errorlevel.
+schtasks /query /tn "SequoiaX-Daily" >nul 2>&1
 if %errorlevel%==0 (
     echo [OK] Registered: SequoiaX-Daily (daily 15:40)
 ) else (
